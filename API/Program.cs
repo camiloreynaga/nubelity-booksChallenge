@@ -88,6 +88,9 @@ builder.Services.AddAuthentication(options =>
 // Registrar IAuthService
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+// Registrar ITextNormalizer
+builder.Services.AddScoped<ITextNormalizer, TextNormalizer>();
+
 var app = builder.Build();
 
 // Initialize database and seed user
