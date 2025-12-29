@@ -7,6 +7,7 @@ public class BooksDbContext : DbContext
 {
     public DbSet<Author> Authors { get; set; }
     public DbSet<Book> Books { get; set; }
+    public DbSet<User> Users { get; set; }
 
     public BooksDbContext(DbContextOptions<BooksDbContext> options) : base(options)
     {
@@ -40,6 +41,17 @@ public class BooksDbContext : DbContext
                 .WithMany(a => a.Books)
                 .HasForeignKey(b => b.AuthorId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure User entity
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Username).IsRequired();
+            entity.Property(e => e.PasswordHash).IsRequired();
+            
+            // Configure unique index on Username
+            entity.HasIndex(e => e.Username).IsUnique();
         });
     }
 }

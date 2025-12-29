@@ -1,0 +1,14 @@
+bin/
+obj/
+.git/
+.gitignore
+*.user
+*.suo
+*.cache
+.vs/
+.vscode/
+*.sln.docstates
+node_modules/
+*.md
+!README.md
+

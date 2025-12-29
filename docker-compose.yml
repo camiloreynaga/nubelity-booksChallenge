@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  books-api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: books-api-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    restart: unless-stopped
+
+  books-api-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: books-api-prod
+    ports:
+      - "8081:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    restart: unless-stopped
+    profiles:
+      - production
