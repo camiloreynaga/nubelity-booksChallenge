@@ -91,6 +91,13 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 // Registrar ITextNormalizer
 builder.Services.AddScoped<ITextNormalizer, TextNormalizer>();
 
+// Registrar IBookService
+builder.Services.AddScoped<IBookService, BookService>();
+
+// Hooks futuros (por ahora, implementaciones mock)
+builder.Services.AddScoped<IIsbnValidator, IsbnSoapValidator>();
+builder.Services.AddScoped<ICoverUrlService, OpenLibraryCoverService>();
+
 var app = builder.Build();
 
 // Initialize database and seed user
