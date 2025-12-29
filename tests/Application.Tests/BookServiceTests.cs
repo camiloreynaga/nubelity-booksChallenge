@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.DTOs.Books;
 using Application.Interfaces;
 using Infrastructure;
@@ -396,6 +397,260 @@ public class BookServiceTests
         Assert.NotNull(result);
         Assert.Null(result.CoverUrl); // Debe ser null cuando el servicio retorna null
         Assert.Single(context.Books); // El libro se debe crear de todas formas
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithPagination_ShouldReturnPagedResults()
+    {
+        // Arrange
+        var options = new DbContextOptionsBuilder<BooksDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        
+        var context = new BooksDbContext(options);
+        var textNormalizer = new TextNormalizer();
+        
+        // Crear 25 libros
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        
+        for (int i = 1; i <= 25; i++)
+        {
+            context.Books.Add(new Book
+            {
+                Id = Guid.NewGuid(),
+                Isbn = $"978-0-123456-{i:D2}-0",
+                Title = $"Book {i}",
+                PublicationYear = 2023,
+                AuthorId = author.Id,
+                Author = author
+            });
+        }
+        await context.SaveChangesAsync();
+        
+        var bookService = new BookService(context, textNormalizer, 
+            Mock.Of<IIsbnValidator>(), Mock.Of<ICoverUrlService>());
+        
+        var query = new GetBooksQueryDto { Page = 1, PageSize = 10 };
+        
+        // Act
+        var result = await bookService.GetAllAsync(query);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(10, result.Items.Count);
+        Assert.Equal(25, result.TotalCount);
+        Assert.Equal(3, result.TotalPages);
+        Assert.True(result.HasNextPage);
+        Assert.False(result.HasPreviousPage);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithTitleFilter_ShouldReturnFilteredResults()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        
+        context.Books.Add(new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "EL NINO",
+            PublicationYear = 2023,
+            AuthorId = author.Id,
+            Author = author
+        });
+        
+        context.Books.Add(new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-79-0",
+            Title = "LA NINA",
+            PublicationYear = 2023,
+            AuthorId = author.Id,
+            Author = author
+        });
+        
+        await context.SaveChangesAsync();
+        
+        var query = new GetBooksQueryDto { Page = 1, PageSize = 10, Title = "el niño" };
+        
+        // Act
+        var result = await bookService.GetAllAsync(query);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Items);
+        Assert.Equal("EL NINO", result.Items[0].Title);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithAuthorNameFilter_ShouldReturnFilteredResults()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var author1 = new Author { Id = Guid.NewGuid(), Name = "JOSE MARIA" };
+        var author2 = new Author { Id = Guid.NewGuid(), Name = "MARIA JOSE" };
+        context.Authors.AddRange(author1, author2);
+        
+        context.Books.Add(new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "BOOK 1",
+            PublicationYear = 2023,
+            AuthorId = author1.Id,
+            Author = author1
+        });
+        
+        context.Books.Add(new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-79-0",
+            Title = "BOOK 2",
+            PublicationYear = 2023,
+            AuthorId = author2.Id,
+            Author = author2
+        });
+        
+        await context.SaveChangesAsync();
+        
+        var query = new GetBooksQueryDto { Page = 1, PageSize = 10, AuthorName = "José María" };
+        
+        // Act
+        var result = await bookService.GetAllAsync(query);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Items);
+        Assert.Equal("JOSE MARIA", result.Items[0].AuthorName);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithCombinedFilters_ShouldReturnFilteredResults()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var author1 = new Author { Id = Guid.NewGuid(), Name = "JOSE MARIA" };
+        var author2 = new Author { Id = Guid.NewGuid(), Name = "MARIA JOSE" };
+        context.Authors.AddRange(author1, author2);
+        
+        context.Books.Add(new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "EL NINO",
+            PublicationYear = 2023,
+            AuthorId = author1.Id,
+            Author = author1
+        });
+        
+        context.Books.Add(new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-79-0",
+            Title = "EL NINO",
+            PublicationYear = 2023,
+            AuthorId = author2.Id,
+            Author = author2
+        });
+        
+        context.Books.Add(new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-80-0",
+            Title = "LA NINA",
+            PublicationYear = 2023,
+            AuthorId = author1.Id,
+            Author = author1
+        });
+        
+        await context.SaveChangesAsync();
+        
+        var query = new GetBooksQueryDto 
+        { 
+            Page = 1, 
+            PageSize = 10, 
+            Title = "el niño",
+            AuthorName = "José María"
+        };
+        
+        // Act
+        var result = await bookService.GetAllAsync(query);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Items);
+        Assert.Equal("EL NINO", result.Items[0].Title);
+        Assert.Equal("JOSE MARIA", result.Items[0].AuthorName);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_WithExistingBook_ShouldReturnBook()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        
+        var bookId = Guid.NewGuid();
+        var book = new Book
+        {
+            Id = bookId,
+            Isbn = "978-0-123456-78-9",
+            Title = "TEST BOOK",
+            PublicationYear = 2023,
+            AuthorId = author.Id,
+            Author = author
+        };
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+        
+        // Act
+        var result = await bookService.GetByIdAsync(bookId);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(bookId, result.Id);
+        Assert.Equal("978-0-123456-78-9", result.Isbn);
+        Assert.Equal("TEST BOOK", result.Title);
+        Assert.Equal("TEST AUTHOR", result.AuthorName);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_WithNonExistingBook_ShouldReturnNull()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var nonExistingId = Guid.NewGuid();
+        
+        // Act
+        var result = await bookService.GetByIdAsync(nonExistingId);
+        
+        // Assert
+        Assert.Null(result);
     }
 }
 

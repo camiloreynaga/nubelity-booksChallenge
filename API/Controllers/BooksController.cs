@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.DTOs.Books;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -11,10 +12,12 @@ namespace API.Controllers;
 public class BooksController : ControllerBase
 {
     private readonly IBookService _bookService;
+    private readonly IIsbnValidator _isbnValidator;
 
-    public BooksController(IBookService bookService)
+    public BooksController(IBookService bookService, IIsbnValidator isbnValidator)
     {
         _bookService = bookService;
+        _isbnValidator = isbnValidator;
     }
 
     [HttpPost]
@@ -44,6 +47,39 @@ public class BooksController : ControllerBase
             // Manejo de errores (se mejorará en fases siguientes con ProblemDetails)
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(PagedResultDto<BookResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResultDto<BookResponseDto>>> GetBooks(
+        [FromQuery] GetBooksQueryDto query)
+    {
+        var result = await _bookService.GetAllAsync(query);
+        return Ok(result);
+    }
+
+    [HttpGet("{id}")]
+    [ProducesResponseType(typeof(BookResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BookResponseDto>> GetBook(Guid id)
+    {
+        var book = await _bookService.GetByIdAsync(id);
+        
+        if (book == null)
+        {
+            return NotFound();
+        }
+        
+        return Ok(book);
+    }
+
+    [HttpGet("validation/{isbn}")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public async Task<ActionResult> ValidateIsbn(string isbn)
+    {
+        var isValid = await _isbnValidator.ValidateIsbnAsync(isbn);
+        
+        return Ok(new { isbn, isValid });
     }
 }
 

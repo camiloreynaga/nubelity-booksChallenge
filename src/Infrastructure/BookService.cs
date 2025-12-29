@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.DTOs.Books;
 using Application.Interfaces;
 using Infrastructure.Entities;
@@ -81,6 +82,86 @@ public class BookService : IBookService
             PublicationYear = book.PublicationYear,
             AuthorId = book.AuthorId,
             AuthorName = author.Name
+        };
+    }
+
+    public async Task<PagedResultDto<BookResponseDto>> GetAllAsync(GetBooksQueryDto query)
+    {
+        // Valores por defecto
+        int page = query.Page > 0 ? query.Page : 1;
+        int pageSize = query.PageSize > 0 && query.PageSize <= 100 ? query.PageSize : 10;
+        
+        // Construir query base
+        var queryable = _context.Books
+            .Include(b => b.Author)
+            .AsQueryable();
+        
+        // Aplicar filtros
+        if (!string.IsNullOrWhiteSpace(query.Title))
+        {
+            // Normalizar título para búsqueda
+            string normalizedTitle = _textNormalizer.Normalize(query.Title);
+            queryable = queryable.Where(b => b.Title.Contains(normalizedTitle));
+        }
+        
+        if (!string.IsNullOrWhiteSpace(query.AuthorName))
+        {
+            // Normalizar nombre de autor para búsqueda
+            string normalizedAuthorName = _textNormalizer.Normalize(query.AuthorName);
+            queryable = queryable.Where(b => b.Author.Name == normalizedAuthorName);
+        }
+        
+        // Obtener total antes de paginar
+        int totalCount = await queryable.CountAsync();
+        
+        // Aplicar paginación
+        var books = await queryable
+            .OrderBy(b => b.Title) // Ordenar por título
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+        
+        // Mapear a DTOs
+        var items = books.Select(b => new BookResponseDto
+        {
+            Id = b.Id,
+            Isbn = b.Isbn,
+            Title = b.Title,
+            CoverUrl = b.CoverUrl,
+            PublicationYear = b.PublicationYear,
+            AuthorId = b.AuthorId,
+            AuthorName = b.Author.Name
+        }).ToList();
+        
+        return new PagedResultDto<BookResponseDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    public async Task<BookResponseDto?> GetByIdAsync(Guid id)
+    {
+        var book = await _context.Books
+            .Include(b => b.Author)
+            .FirstOrDefaultAsync(b => b.Id == id);
+        
+        if (book == null)
+        {
+            return null;
+        }
+        
+        return new BookResponseDto
+        {
+            Id = book.Id,
+            Isbn = book.Isbn,
+            Title = book.Title,
+            CoverUrl = book.CoverUrl,
+            PublicationYear = book.PublicationYear,
+            AuthorId = book.AuthorId,
+            AuthorName = book.Author.Name
         };
     }
 }
