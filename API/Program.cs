@@ -111,6 +111,9 @@ builder.Services.AddScoped<ITextNormalizer, TextNormalizer>();
 // Registrar IBookService
 builder.Services.AddScoped<IBookService, BookService>();
 
+// Registrar IAuthorService
+builder.Services.AddScoped<IAuthorService, AuthorService>();
+
 // Servicios externos
 builder.Services.AddScoped<IIsbnValidator, IsbnSoapValidator>();
 builder.Services.AddScoped<ICoverUrlService, OpenLibraryCoverService>();

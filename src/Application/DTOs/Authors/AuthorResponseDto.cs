@@ -1,10 +1,10 @@
-namespace Infrastructure.Entities;
+namespace Application.DTOs.Authors;
 
-public class Author
+public class AuthorResponseDto
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public DateTime? BirthDate { get; set; }
-    public ICollection<Book> Books { get; set; } = new List<Book>();
+    public int BooksCount { get; set; }
 }
 
