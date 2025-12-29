@@ -88,13 +88,30 @@ builder.Services.AddAuthentication(options =>
 // Registrar IAuthService
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+// Configurar HttpClient para servicios externos
+builder.Services.AddHttpClient<OpenLibraryCoverService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler())
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(10); // 10 segundos timeout
+    });
+
+builder.Services.AddHttpClient<IsbnSoapValidator>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler())
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(15); // 15 segundos timeout para SOAP
+    });
+
 // Registrar ITextNormalizer
 builder.Services.AddScoped<ITextNormalizer, TextNormalizer>();
 
 // Registrar IBookService
 builder.Services.AddScoped<IBookService, BookService>();
 
-// Hooks futuros (por ahora, implementaciones mock)
+// Servicios externos
 builder.Services.AddScoped<IIsbnValidator, IsbnSoapValidator>();
 builder.Services.AddScoped<ICoverUrlService, OpenLibraryCoverService>();
 

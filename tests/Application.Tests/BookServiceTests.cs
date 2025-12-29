@@ -4,6 +4,7 @@ using Infrastructure;
 using Infrastructure.Entities;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 
 namespace Application.Tests;
 
@@ -18,13 +19,27 @@ public class BookServiceTests
         return new BooksDbContext(options);
     }
 
+    private (Mock<IIsbnValidator>, Mock<ICoverUrlService>) CreateMockServices(bool isValidIsbn = true, string? coverUrl = null)
+    {
+        var mockIsbnValidator = new Mock<IIsbnValidator>();
+        mockIsbnValidator.Setup(x => x.ValidateIsbnAsync(It.IsAny<string>()))
+            .ReturnsAsync(isValidIsbn);
+        
+        var mockCoverService = new Mock<ICoverUrlService>();
+        mockCoverService.Setup(x => x.GetCoverUrlAsync(It.IsAny<string>()))
+            .ReturnsAsync(coverUrl);
+        
+        return (mockIsbnValidator, mockCoverService);
+    }
+
     [Fact]
     public async Task CreateBookAsync_WithExistingAuthor_ShouldUseExistingAuthor()
     {
         // Arrange
         var context = CreateContext();
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         // Crear un autor primero
         var existingAuthor = new Author
@@ -61,7 +76,8 @@ public class BookServiceTests
         // Arrange
         var context = CreateContext();
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         var dto = new CreateBookDto
         {
@@ -91,7 +107,8 @@ public class BookServiceTests
         // Arrange
         var context = CreateContext();
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         var dto = new CreateBookDto
         {
@@ -118,7 +135,8 @@ public class BookServiceTests
         // Arrange
         var context = CreateContext();
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         var dto = new CreateBookDto
         {
@@ -155,7 +173,8 @@ public class BookServiceTests
         context.Database.EnsureCreated();
 
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         var dto1 = new CreateBookDto
         {
@@ -189,7 +208,8 @@ public class BookServiceTests
         // Arrange
         var context = CreateContext();
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         var dto1 = new CreateBookDto
         {
@@ -223,7 +243,8 @@ public class BookServiceTests
         // Arrange
         var context = CreateContext();
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         var dto = new CreateBookDto
         {
@@ -250,7 +271,8 @@ public class BookServiceTests
         // Arrange
         var context = CreateContext();
         var textNormalizer = new TextNormalizer();
-        var bookService = new BookService(context, textNormalizer);
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(coverUrl: null);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
 
         var dto = new CreateBookDto
         {
@@ -265,7 +287,115 @@ public class BookServiceTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.Null(result.CoverUrl); // CoverUrl debe ser null por ahora
+        Assert.Null(result.CoverUrl); // CoverUrl debe ser null cuando el servicio retorna null
+    }
+
+    [Fact]
+    public async Task CreateBookAsync_WithInvalidIsbn_ShouldThrowException()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: false);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var dto = new CreateBookDto
+        {
+            Isbn = "invalid-isbn",
+            Title = "Test Book",
+            PublicationYear = 2023,
+            AuthorName = "Test Author"
+        };
+        
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => bookService.CreateBookAsync(dto));
+    }
+
+    [Fact]
+    public async Task CreateBookAsync_WithValidIsbn_ShouldCreateBook()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: true);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var dto = new CreateBookDto
+        {
+            Isbn = "978-0-123456-78-9",
+            Title = "Test Book",
+            PublicationYear = 2023,
+            AuthorName = "Test Author"
+        };
+        
+        // Act
+        var result = await bookService.CreateBookAsync(dto);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("978-0-123456-78-9", result.Isbn);
+        Assert.Single(context.Books);
+        
+        // Verificar que se llamó al validador
+        mockIsbnValidator.Verify(x => x.ValidateIsbnAsync("978-0-123456-78-9"), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateBookAsync_WithCoverUrl_ShouldSetCoverUrl()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var expectedCoverUrl = "https://covers.openlibrary.org/b/id/123456-M.jpg";
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(coverUrl: expectedCoverUrl);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var dto = new CreateBookDto
+        {
+            Isbn = "978-0-123456-78-9",
+            Title = "Test Book",
+            PublicationYear = 2023,
+            AuthorName = "Test Author"
+        };
+        
+        // Act
+        var result = await bookService.CreateBookAsync(dto);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(expectedCoverUrl, result.CoverUrl);
+        
+        var book = await context.Books.FirstAsync();
+        Assert.Equal(expectedCoverUrl, book.CoverUrl);
+        
+        // Verificar que se llamó al servicio de cover
+        mockCoverService.Verify(x => x.GetCoverUrlAsync("978-0-123456-78-9"), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateBookAsync_WhenCoverServiceReturnsNull_ShouldCreateBookWithNullCoverUrl()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(coverUrl: null);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var dto = new CreateBookDto
+        {
+            Isbn = "978-0-123456-78-9",
+            Title = "Test Book",
+            PublicationYear = 2023,
+            AuthorName = "Test Author"
+        };
+        
+        // Act
+        var result = await bookService.CreateBookAsync(dto);
+        
+        // Assert
+        Assert.NotNull(result);
+        Assert.Null(result.CoverUrl); // Debe ser null cuando el servicio retorna null
+        Assert.Single(context.Books); // El libro se debe crear de todas formas
     }
 }
 

@@ -9,26 +9,38 @@ public class BookService : IBookService
 {
     private readonly BooksDbContext _context;
     private readonly ITextNormalizer _textNormalizer;
+    private readonly IIsbnValidator _isbnValidator;
+    private readonly ICoverUrlService _coverUrlService;
 
-    public BookService(BooksDbContext context, ITextNormalizer textNormalizer)
+    public BookService(
+        BooksDbContext context, 
+        ITextNormalizer textNormalizer,
+        IIsbnValidator isbnValidator,
+        ICoverUrlService coverUrlService)
     {
         _context = context;
         _textNormalizer = textNormalizer;
+        _isbnValidator = isbnValidator;
+        _coverUrlService = coverUrlService;
     }
 
     public async Task<BookResponseDto> CreateBookAsync(CreateBookDto dto)
     {
-        // Normalizar el título del libro
+        // 1. Validar ISBN con SOAP
+        bool isIsbnValid = await _isbnValidator.ValidateIsbnAsync(dto.Isbn);
+        if (!isIsbnValid)
+        {
+            throw new ArgumentException("Invalid ISBN", nameof(dto.Isbn));
+        }
+
+        // 2. Normalizar Title
         string normalizedTitle = _textNormalizer.Normalize(dto.Title);
 
-        // Normalizar el nombre del autor
+        // 3. Buscar o crear Author
         string normalizedAuthorName = _textNormalizer.Normalize(dto.AuthorName);
-
-        // Buscar autor por nombre normalizado
         var author = await _context.Authors
             .FirstOrDefaultAsync(a => a.Name == normalizedAuthorName);
 
-        // Si no existe, crearlo
         if (author == null)
         {
             author = new Author
@@ -40,13 +52,17 @@ public class BookService : IBookService
             await _context.SaveChangesAsync();
         }
 
-        // Crear el libro
+        // 4. Obtener CoverUrl con REST
+        string? coverUrl = await _coverUrlService.GetCoverUrlAsync(dto.Isbn);
+        // Si no se obtiene, puede ser null (no es crítico)
+
+        // 5. Crear Book
         var book = new Book
         {
             Id = Guid.NewGuid(),
-            Isbn = dto.Isbn, // No normalizar ISBN (contiene números y formato específico)
+            Isbn = dto.Isbn,
             Title = normalizedTitle,
-            CoverUrl = null, // Se obtendrá en el Slice 5
+            CoverUrl = coverUrl, // Ahora se obtiene del servicio REST
             PublicationYear = dto.PublicationYear,
             AuthorId = author.Id,
             Author = author
@@ -55,7 +71,7 @@ public class BookService : IBookService
         _context.Books.Add(book);
         await _context.SaveChangesAsync();
 
-        // Retornar BookResponseDto
+        // 6. Retornar BookResponseDto
         return new BookResponseDto
         {
             Id = book.Id,

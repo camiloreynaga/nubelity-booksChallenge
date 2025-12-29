@@ -29,6 +29,10 @@ public class BooksController : ControllerBase
             var book = await _bookService.CreateBookAsync(dto);
             return Created($"/api/books/{book.Id}", book);
         }
+        catch (ArgumentException ex) when (ex.ParamName == "Isbn")
+        {
+            return BadRequest(new { error = "Invalid ISBN", details = ex.Message });
+        }
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE constraint") == true || 
                                             ex.InnerException?.Message.Contains("Isbn") == true)
         {
