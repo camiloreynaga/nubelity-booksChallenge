@@ -7,6 +7,7 @@ public class Book
     public string Title { get; set; } = string.Empty;
     public string? CoverUrl { get; set; }
     public int PublicationYear { get; set; }
+    public int? PageNumber { get; set; }
     public Guid AuthorId { get; set; }
     public Author Author { get; set; } = null!;
 }

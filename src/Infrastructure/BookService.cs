@@ -68,6 +68,7 @@ public class BookService : IBookService
             Title = normalizedTitle,
             CoverUrl = coverUrl, // Ahora se obtiene del servicio REST
             PublicationYear = dto.PublicationYear,
+            PageNumber = dto.PageNumber,
             AuthorId = author.Id,
             Author = author
         };
@@ -83,6 +84,7 @@ public class BookService : IBookService
             Title = book.Title,
             CoverUrl = book.CoverUrl,
             PublicationYear = book.PublicationYear,
+            PageNumber = book.PageNumber,
             AuthorId = book.AuthorId,
             AuthorName = author.Name
         };
@@ -132,6 +134,7 @@ public class BookService : IBookService
             Title = b.Title,
             CoverUrl = b.CoverUrl,
             PublicationYear = b.PublicationYear,
+            PageNumber = b.PageNumber,
             AuthorId = b.AuthorId,
             AuthorName = b.Author.Name
         }).ToList();
@@ -163,6 +166,7 @@ public class BookService : IBookService
             Title = book.Title,
             CoverUrl = book.CoverUrl,
             PublicationYear = book.PublicationYear,
+            PageNumber = book.PageNumber,
             AuthorId = book.AuthorId,
             AuthorName = book.Author.Name
         };
@@ -223,6 +227,12 @@ public class BookService : IBookService
             book.PublicationYear = dto.PublicationYear.Value;
         }
         
+        // Actualizar PageNumber (si se proporciona)
+        if (dto.PageNumber.HasValue)
+        {
+            book.PageNumber = dto.PageNumber.Value;
+        }
+        
         // Actualizar Author (si se proporciona AuthorName)
         if (!string.IsNullOrWhiteSpace(dto.AuthorName))
         {
@@ -259,6 +269,7 @@ public class BookService : IBookService
             Title = book.Title,
             CoverUrl = book.CoverUrl,
             PublicationYear = book.PublicationYear,
+            PageNumber = book.PageNumber,
             AuthorId = book.AuthorId,
             AuthorName = book.Author.Name
         };
@@ -386,6 +397,7 @@ public class BookService : IBookService
                     Isbn = csvRow.Isbn.Trim(),
                     Title = csvRow.Title.Trim(),
                     PublicationYear = csvRow.PublicationYear,
+                    PageNumber = csvRow.PageNumber,
                     AuthorName = csvRow.AuthorName.Trim()
                 };
                 

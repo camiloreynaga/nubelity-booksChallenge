@@ -135,7 +135,7 @@ public class BooksController : ControllerBase
         return NoContent(); // 204 No Content
     }
 
-    [HttpPost("masive")]
+    [HttpPost("upload")]
     [Authorize] // Requiere autenticación JWT
     [ProducesResponseType(typeof(CsvUploadResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

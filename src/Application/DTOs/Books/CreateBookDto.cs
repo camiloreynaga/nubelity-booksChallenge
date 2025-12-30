@@ -16,6 +16,9 @@ public class CreateBookDto
     [Range(1000, 2100, ErrorMessage = "Publication year must be between 1000 and 2100")]
     public int PublicationYear { get; set; }
 
+    [Range(1, 10000, ErrorMessage = "Page number must be between 1 and 10000")]
+    public int? PageNumber { get; set; }
+
     [Required(ErrorMessage = "Author name is required")]
     [StringLength(100, ErrorMessage = "Author name must not exceed 100 characters")]
     public string AuthorName { get; set; } = string.Empty;
