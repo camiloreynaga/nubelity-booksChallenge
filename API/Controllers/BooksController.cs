@@ -81,5 +81,58 @@ public class BooksController : ControllerBase
         
         return Ok(new { isbn, isValid });
     }
+
+    [HttpPatch("{id}")]
+    [Authorize] // Requiere autenticación JWT
+    [ProducesResponseType(typeof(BookResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<BookResponseDto>> UpdateBook(Guid id, UpdateBookDto dto)
+    {
+        try
+        {
+            var book = await _bookService.UpdateAsync(id, dto);
+            return Ok(book);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex) when (ex.ParamName == "Isbn")
+        {
+            return BadRequest(new { error = "Invalid ISBN", details = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE constraint") == true || 
+                                            ex.InnerException?.Message.Contains("Isbn") == true)
+        {
+            return BadRequest(new { error = "A book with this ISBN already exists." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("{id}")]
+    [Authorize] // Requiere autenticación JWT
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> DeleteBook(Guid id)
+    {
+        bool deleted = await _bookService.DeleteAsync(id);
+        
+        if (!deleted)
+        {
+            return NotFound();
+        }
+        
+        return NoContent(); // 204 No Content
+    }
 }
 

@@ -164,5 +164,118 @@ public class BookService : IBookService
             AuthorName = book.Author.Name
         };
     }
+
+    public async Task<BookResponseDto> UpdateAsync(Guid id, UpdateBookDto dto)
+    {
+        var book = await _context.Books
+            .Include(b => b.Author)
+            .FirstOrDefaultAsync(b => b.Id == id);
+        
+        if (book == null)
+        {
+            throw new KeyNotFoundException($"Book with ID {id} not found.");
+        }
+        
+        // Actualizar solo campos proporcionados (actualización parcial)
+        
+        // Actualizar ISBN (si se proporciona)
+        if (!string.IsNullOrWhiteSpace(dto.Isbn))
+        {
+            // Validar ISBN con SOAP si se cambia
+            bool isIsbnValid = await _isbnValidator.ValidateIsbnAsync(dto.Isbn);
+            if (!isIsbnValid)
+            {
+                throw new ArgumentException("Invalid ISBN", nameof(dto.Isbn));
+            }
+            
+            // Verificar que el nuevo ISBN no esté en uso por otro libro
+            var existingBook = await _context.Books
+                .FirstOrDefaultAsync(b => b.Isbn == dto.Isbn && b.Id != id);
+            
+            if (existingBook != null)
+            {
+                throw new InvalidOperationException($"A book with ISBN '{dto.Isbn}' already exists.");
+            }
+            
+            book.Isbn = dto.Isbn;
+            
+            // Si se cambia el ISBN, intentar obtener nuevo CoverUrl
+            string? coverUrl = await _coverUrlService.GetCoverUrlAsync(dto.Isbn);
+            if (coverUrl != null)
+            {
+                book.CoverUrl = coverUrl;
+            }
+        }
+        
+        // Actualizar Title (si se proporciona)
+        if (!string.IsNullOrWhiteSpace(dto.Title))
+        {
+            string normalizedTitle = _textNormalizer.Normalize(dto.Title);
+            book.Title = normalizedTitle;
+        }
+        
+        // Actualizar PublicationYear (si se proporciona)
+        if (dto.PublicationYear.HasValue)
+        {
+            book.PublicationYear = dto.PublicationYear.Value;
+        }
+        
+        // Actualizar Author (si se proporciona AuthorName)
+        if (!string.IsNullOrWhiteSpace(dto.AuthorName))
+        {
+            string normalizedAuthorName = _textNormalizer.Normalize(dto.AuthorName);
+            
+            // Buscar o crear autor
+            var author = await _context.Authors
+                .FirstOrDefaultAsync(a => a.Name == normalizedAuthorName);
+            
+            if (author == null)
+            {
+                author = new Author
+                {
+                    Id = Guid.NewGuid(),
+                    Name = normalizedAuthorName
+                };
+                _context.Authors.Add(author);
+                await _context.SaveChangesAsync(); // Guardar autor primero
+            }
+            
+            book.AuthorId = author.Id;
+            book.Author = author;
+        }
+        
+        await _context.SaveChangesAsync();
+        
+        // Recargar libro con autor actualizado
+        await _context.Entry(book).Reference(b => b.Author).LoadAsync();
+        
+        return new BookResponseDto
+        {
+            Id = book.Id,
+            Isbn = book.Isbn,
+            Title = book.Title,
+            CoverUrl = book.CoverUrl,
+            PublicationYear = book.PublicationYear,
+            AuthorId = book.AuthorId,
+            AuthorName = book.Author.Name
+        };
+    }
+
+    public async Task<bool> DeleteAsync(Guid id)
+    {
+        var book = await _context.Books
+            .FirstOrDefaultAsync(b => b.Id == id);
+        
+        if (book == null)
+        {
+            return false; // No existe
+        }
+        
+        // Eliminar libro
+        _context.Books.Remove(book);
+        await _context.SaveChangesAsync();
+        
+        return true; // Eliminado correctamente
+    }
 }
 

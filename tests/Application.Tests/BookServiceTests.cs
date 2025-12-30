@@ -652,5 +652,298 @@ public class BookServiceTests
         // Assert
         Assert.Null(result);
     }
+
+    [Fact]
+    public async Task UpdateAsync_WithOnlyTitle_ShouldUpdateOnlyTitle()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear autor y libro
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        var book = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "ORIGINAL TITLE",
+            PublicationYear = 2020,
+            AuthorId = author.Id,
+            Author = author
+        };
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+        
+        var updateDto = new UpdateBookDto { Title = "New Title 123" };
+        
+        // Act
+        var result = await bookService.UpdateAsync(book.Id, updateDto);
+        
+        // Assert
+        Assert.Equal("NEW TITLE", result.Title); // Normalizado
+        Assert.Equal(book.Isbn, result.Isbn); // No cambió
+        Assert.Equal(book.PublicationYear, result.PublicationYear); // No cambió
+        Assert.Equal(author.Id, result.AuthorId); // No cambió
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithOnlyIsbn_ShouldUpdateIsbnAndCoverUrl()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var newIsbn = "978-0-316-76948-0";
+        var expectedCoverUrl = "https://covers.openlibrary.org/b/id/123456-M.jpg";
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(coverUrl: expectedCoverUrl);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear autor y libro
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        var book = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "ORIGINAL TITLE",
+            PublicationYear = 2020,
+            AuthorId = author.Id,
+            Author = author
+        };
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+        
+        var updateDto = new UpdateBookDto { Isbn = newIsbn };
+        
+        // Act
+        var result = await bookService.UpdateAsync(book.Id, updateDto);
+        
+        // Assert
+        Assert.Equal(newIsbn, result.Isbn); // Cambió
+        Assert.Equal(expectedCoverUrl, result.CoverUrl); // Se obtuvo nuevo CoverUrl
+        Assert.Equal(book.Title, result.Title); // No cambió
+        Assert.Equal(book.PublicationYear, result.PublicationYear); // No cambió
+        mockIsbnValidator.Verify(x => x.ValidateIsbnAsync(newIsbn), Times.Once);
+        mockCoverService.Verify(x => x.GetCoverUrlAsync(newIsbn), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithOnlyAuthorName_ShouldUpdateAuthor()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear autor original y libro
+        var authorA = new Author { Id = Guid.NewGuid(), Name = "AUTHOR A" };
+        context.Authors.Add(authorA);
+        var book = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "ORIGINAL TITLE",
+            PublicationYear = 2020,
+            AuthorId = authorA.Id,
+            Author = authorA
+        };
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+        
+        var updateDto = new UpdateBookDto { AuthorName = "Author B" };
+        
+        // Act
+        var result = await bookService.UpdateAsync(book.Id, updateDto);
+        
+        // Assert
+        Assert.Equal("AUTHOR B", result.AuthorName); // Normalizado
+        Assert.NotEqual(authorA.Id, result.AuthorId); // Cambió el autor
+        Assert.Equal(book.Isbn, result.Isbn); // No cambió
+        Assert.Equal(book.Title, result.Title); // No cambió
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithMultipleFields_ShouldUpdateAllFields()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear autor y libro
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        var book = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "ORIGINAL TITLE",
+            PublicationYear = 2020,
+            AuthorId = author.Id,
+            Author = author
+        };
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+        
+        var updateDto = new UpdateBookDto 
+        { 
+            Title = "Updated Title",
+            PublicationYear = 2024,
+            AuthorName = "New Author"
+        };
+        
+        // Act
+        var result = await bookService.UpdateAsync(book.Id, updateDto);
+        
+        // Assert
+        Assert.Equal("UPDATED TITLE", result.Title); // Normalizado
+        Assert.Equal(2024, result.PublicationYear);
+        Assert.Equal("NEW AUTHOR", result.AuthorName); // Normalizado
+        Assert.Equal(book.Isbn, result.Isbn); // No cambió
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithNonExistingBook_ShouldThrowKeyNotFoundException()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var nonExistingId = Guid.NewGuid();
+        var updateDto = new UpdateBookDto { Title = "New Title" };
+        
+        // Act & Assert
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => 
+            bookService.UpdateAsync(nonExistingId, updateDto));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithInvalidIsbn_ShouldThrowArgumentException()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: false);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear autor y libro
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        var book = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "ORIGINAL TITLE",
+            PublicationYear = 2020,
+            AuthorId = author.Id,
+            Author = author
+        };
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+        
+        var updateDto = new UpdateBookDto { Isbn = "invalid-isbn" };
+        
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => 
+            bookService.UpdateAsync(book.Id, updateDto));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithDuplicateIsbn_ShouldThrowInvalidOperationException()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear dos libros con ISBNs diferentes
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        var book1 = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "BOOK 1",
+            PublicationYear = 2020,
+            AuthorId = author.Id,
+            Author = author
+        };
+        var book2 = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-79-0",
+            Title = "BOOK 2",
+            PublicationYear = 2021,
+            AuthorId = author.Id,
+            Author = author
+        };
+        context.Books.AddRange(book1, book2);
+        await context.SaveChangesAsync();
+        
+        // Intentar actualizar el ISBN del primer libro al del segundo
+        var updateDto = new UpdateBookDto { Isbn = book2.Isbn };
+        
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => 
+            bookService.UpdateAsync(book1.Id, updateDto));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithExistingBook_ShouldReturnTrueAndDeleteBook()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear autor y libro
+        var author = new Author { Id = Guid.NewGuid(), Name = "TEST AUTHOR" };
+        context.Authors.Add(author);
+        var book = new Book
+        {
+            Id = Guid.NewGuid(),
+            Isbn = "978-0-123456-78-9",
+            Title = "TEST BOOK",
+            PublicationYear = 2020,
+            AuthorId = author.Id,
+            Author = author
+        };
+        context.Books.Add(book);
+        await context.SaveChangesAsync();
+        
+        // Act
+        var result = await bookService.DeleteAsync(book.Id);
+        
+        // Assert
+        Assert.True(result);
+        var deletedBook = await context.Books.FindAsync(book.Id);
+        Assert.Null(deletedBook); // El libro debe estar eliminado
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithNonExistingBook_ShouldReturnFalse()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        var nonExistingId = Guid.NewGuid();
+        
+        // Act
+        var result = await bookService.DeleteAsync(nonExistingId);
+        
+        // Assert
+        Assert.False(result);
+    }
 }
 
