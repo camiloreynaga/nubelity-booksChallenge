@@ -1,3 +1,4 @@
+using API.Middleware;
 using Application.Interfaces;
 using Infrastructure;
 using Infrastructure.Entities;
@@ -18,7 +19,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "Books API", Version = "v1" });
+    options.SwaggerDoc("v1", new OpenApiInfo 
+    { 
+        Title = "Books Challenge API", 
+        Version = "v1",
+        Description = "API REST para gestión de libros y autores con autenticación JWT, validación de ISBN vía SOAP, y obtención de portadas vía REST.",
+        Contact = new OpenApiContact
+        {
+            Name = "Books Challenge",
+            Email = "support@example.com"
+        }
+    });
     
     // Configurar JWT en Swagger
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -44,6 +55,14 @@ builder.Services.AddSwaggerGen(options =>
             Array.Empty<string>()
         }
     });
+    
+    // Incluir comentarios XML (opcional)
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        options.IncludeXmlComments(xmlPath);
+    }
 });
 
 // Crear una conexión SQLite en memoria compartida que se mantendrá abierta
@@ -169,6 +188,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Registrar middleware de excepciones (ANTES de otros middlewares)
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
 app.UseHttpsRedirection();
 
 app.UseAuthentication(); // Debe ir ANTES de UseAuthorization
@@ -177,3 +199,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Hacer Program público para tests de integración
+public partial class Program { }
