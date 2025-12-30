@@ -945,5 +945,173 @@ public class BookServiceTests
         // Assert
         Assert.False(result);
     }
+
+    [Fact]
+    public async Task CreateBooksFromCsvAsync_WithValidCsv_ShouldCreateAllBooks()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: true);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear CSV en memoria
+        var csvContent = "ISBN,Title,PublicationYear,AuthorName\n" +
+                         "978-0-316-76948-0,Book 1,2023,Author 1\n" +
+                         "978-0-123456-78-9,Book 2,2022,Author 2\n";
+        var csvBytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
+        var csvStream = new MemoryStream(csvBytes);
+        
+        // Act
+        var result = await bookService.CreateBooksFromCsvAsync(csvStream);
+        
+        // Assert
+        Assert.Equal(2, result.TotalRows);
+        Assert.Equal(2, result.SuccessfulRows);
+        Assert.Equal(0, result.FailedRows);
+        Assert.All(result.Results, r => Assert.True(r.IsSuccess));
+        Assert.Equal(2, context.Books.Count());
+    }
+
+    [Fact]
+    public async Task CreateBooksFromCsvAsync_WithInvalidRows_ShouldReportErrors()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: true);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear CSV con filas inválidas
+        var csvContent = "ISBN,Title,PublicationYear,AuthorName\n" +
+                         "978-0-316-76948-0,Book 1,2023,Author 1\n" + // Válido
+                         ",Book 2,2022,Author 2\n" + // ISBN faltante
+                         "978-0-123456-78-9,,2022,Author 3\n" + // Title faltante
+                         "978-0-123456-79-0,Book 4,500,Author 4\n"; // Año fuera de rango
+        var csvBytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
+        var csvStream = new MemoryStream(csvBytes);
+        
+        // Act
+        var result = await bookService.CreateBooksFromCsvAsync(csvStream);
+        
+        // Assert
+        Assert.Equal(4, result.TotalRows);
+        Assert.Equal(1, result.SuccessfulRows);
+        Assert.Equal(3, result.FailedRows);
+        Assert.Single(context.Books); // Solo se creó un libro
+    }
+
+    [Fact]
+    public async Task CreateBooksFromCsvAsync_WithDuplicateIsbn_ShouldReportError()
+    {
+        // Arrange - Usar SQLite en memoria para validar restricción única
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+
+        var options = new DbContextOptionsBuilder<BooksDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        using var context = new BooksDbContext(options);
+        context.Database.EnsureCreated();
+
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: true);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear CSV con ISBNs duplicados
+        var csvContent = "ISBN,Title,PublicationYear,AuthorName\n" +
+                         "978-0-316-76948-0,Book 1,2023,Author 1\n" +
+                         "978-0-316-76948-0,Book 2,2022,Author 2\n"; // Mismo ISBN
+        var csvBytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
+        var csvStream = new MemoryStream(csvBytes);
+        
+        // Act
+        var result = await bookService.CreateBooksFromCsvAsync(csvStream);
+        
+        // Assert
+        Assert.Equal(2, result.TotalRows);
+        Assert.Equal(1, result.SuccessfulRows);
+        Assert.Equal(1, result.FailedRows);
+        Assert.Single(context.Books); // Solo se creó un libro
+        Assert.Contains(result.Results, r => !r.IsSuccess && r.ErrorMessage != null && r.ErrorMessage.Contains("ISBN already exists"));
+    }
+
+    [Fact]
+    public async Task CreateBooksFromCsvAsync_WithInvalidIsbn_ShouldReportError()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: false);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear CSV con ISBN inválido
+        var csvContent = "ISBN,Title,PublicationYear,AuthorName\n" +
+                         "invalid-isbn,Book 1,2023,Author 1\n";
+        var csvBytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
+        var csvStream = new MemoryStream(csvBytes);
+        
+        // Act
+        var result = await bookService.CreateBooksFromCsvAsync(csvStream);
+        
+        // Assert
+        Assert.Equal(1, result.TotalRows);
+        Assert.Equal(0, result.SuccessfulRows);
+        Assert.Equal(1, result.FailedRows);
+        Assert.Empty(context.Books);
+        Assert.Contains(result.Results, r => !r.IsSuccess && r.ErrorMessage != null && r.ErrorMessage.Contains("Invalid ISBN"));
+    }
+
+    [Fact]
+    public async Task CreateBooksFromCsvAsync_WithEmptyCsv_ShouldReturnZeroRows()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices();
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear CSV vacío (solo encabezados)
+        var csvContent = "ISBN,Title,PublicationYear,AuthorName\n";
+        var csvBytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
+        var csvStream = new MemoryStream(csvBytes);
+        
+        // Act
+        var result = await bookService.CreateBooksFromCsvAsync(csvStream);
+        
+        // Assert
+        Assert.Equal(0, result.TotalRows);
+        Assert.Equal(0, result.SuccessfulRows);
+        Assert.Equal(0, result.FailedRows);
+        Assert.Empty(result.Results);
+        Assert.Empty(context.Books);
+    }
+
+    [Fact]
+    public async Task CreateBooksFromCsvAsync_WithMissingAuthorName_ShouldReportError()
+    {
+        // Arrange
+        var context = CreateContext();
+        var textNormalizer = new TextNormalizer();
+        var (mockIsbnValidator, mockCoverService) = CreateMockServices(isValidIsbn: true);
+        var bookService = new BookService(context, textNormalizer, mockIsbnValidator.Object, mockCoverService.Object);
+        
+        // Crear CSV con AuthorName faltante
+        var csvContent = "ISBN,Title,PublicationYear,AuthorName\n" +
+                         "978-0-316-76948-0,Book 1,2023,\n"; // AuthorName vacío
+        var csvBytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
+        var csvStream = new MemoryStream(csvBytes);
+        
+        // Act
+        var result = await bookService.CreateBooksFromCsvAsync(csvStream);
+        
+        // Assert
+        Assert.Equal(1, result.TotalRows);
+        Assert.Equal(0, result.SuccessfulRows);
+        Assert.Equal(1, result.FailedRows);
+        Assert.Empty(context.Books);
+        Assert.Contains(result.Results, r => !r.IsSuccess && r.ErrorMessage != null && r.ErrorMessage.Contains("AuthorName is required"));
+    }
 }
 

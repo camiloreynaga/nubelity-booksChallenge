@@ -3,6 +3,9 @@ using Application.DTOs.Books;
 using Application.Interfaces;
 using Infrastructure.Entities;
 using Microsoft.EntityFrameworkCore;
+using CsvHelper;
+using CsvHelper.Configuration;
+using System.Globalization;
 
 namespace Infrastructure;
 
@@ -276,6 +279,198 @@ public class BookService : IBookService
         await _context.SaveChangesAsync();
         
         return true; // Eliminado correctamente
+    }
+
+    public async Task<CsvUploadResultDto> CreateBooksFromCsvAsync(Stream csvStream)
+    {
+        var results = new List<CsvRowResultDto>();
+        int rowNumber = 0;
+        
+        using var reader = new StreamReader(csvStream);
+        var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+        {
+            HasHeaderRecord = true,
+            TrimOptions = TrimOptions.Trim,
+            HeaderValidated = null, // Ignorar validación de encabezados
+            MissingFieldFound = null // Ignorar campos faltantes
+        };
+        
+        using var csv = new CsvReader(reader, config);
+        
+        // Registrar mapeo
+        csv.Context.RegisterClassMap<CsvBookRowMap>();
+        
+        // Leer encabezados
+        await csv.ReadAsync();
+        csv.ReadHeader();
+        
+        // Procesar cada fila
+        while (await csv.ReadAsync())
+        {
+            rowNumber++;
+            
+            try
+            {
+                // Leer fila del CSV
+                var csvRow = csv.GetRecord<CsvBookRowDto>();
+                
+                if (csvRow == null)
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = "CSV row is null or empty",
+                        Isbn = "",
+                        Title = ""
+                    });
+                    continue;
+                }
+                
+                // Validar campos requeridos
+                if (string.IsNullOrWhiteSpace(csvRow.Isbn))
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = "ISBN is required",
+                        Isbn = csvRow.Isbn ?? "",
+                        Title = csvRow.Title ?? ""
+                    });
+                    continue;
+                }
+                
+                if (string.IsNullOrWhiteSpace(csvRow.Title))
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = "Title is required",
+                        Isbn = csvRow.Isbn,
+                        Title = csvRow.Title ?? ""
+                    });
+                    continue;
+                }
+                
+                if (string.IsNullOrWhiteSpace(csvRow.AuthorName))
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = "AuthorName is required",
+                        Isbn = csvRow.Isbn,
+                        Title = csvRow.Title
+                    });
+                    continue;
+                }
+                
+                if (csvRow.PublicationYear < 1000 || csvRow.PublicationYear > 2100)
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = "PublicationYear must be between 1000 and 2100",
+                        Isbn = csvRow.Isbn,
+                        Title = csvRow.Title
+                    });
+                    continue;
+                }
+                
+                // Crear CreateBookDto
+                var createDto = new CreateBookDto
+                {
+                    Isbn = csvRow.Isbn.Trim(),
+                    Title = csvRow.Title.Trim(),
+                    PublicationYear = csvRow.PublicationYear,
+                    AuthorName = csvRow.AuthorName.Trim()
+                };
+                
+                // Intentar crear libro (reutilizar lógica existente)
+                try
+                {
+                    var book = await CreateBookAsync(createDto);
+                    
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = true,
+                        BookId = book.Id,
+                        Isbn = csvRow.Isbn,
+                        Title = csvRow.Title
+                    });
+                }
+                catch (ArgumentException ex) when (ex.ParamName == "Isbn")
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = $"Invalid ISBN: {ex.Message}",
+                        Isbn = csvRow.Isbn,
+                        Title = csvRow.Title
+                    });
+                }
+                catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE constraint") == true || 
+                                                    ex.InnerException?.Message.Contains("Isbn") == true)
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = "A book with this ISBN already exists",
+                        Isbn = csvRow.Isbn,
+                        Title = csvRow.Title
+                    });
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new CsvRowResultDto
+                    {
+                        RowNumber = rowNumber,
+                        IsSuccess = false,
+                        ErrorMessage = ex.Message,
+                        Isbn = csvRow.Isbn,
+                        Title = csvRow.Title
+                    });
+                }
+            }
+            catch (CsvHelperException ex)
+            {
+                // Error al parsear la fila del CSV
+                results.Add(new CsvRowResultDto
+                {
+                    RowNumber = rowNumber,
+                    IsSuccess = false,
+                    ErrorMessage = $"CSV parsing error: {ex.Message}",
+                    Isbn = "",
+                    Title = ""
+                });
+            }
+            catch (Exception ex)
+            {
+                // Error general
+                results.Add(new CsvRowResultDto
+                {
+                    RowNumber = rowNumber,
+                    IsSuccess = false,
+                    ErrorMessage = $"Unexpected error: {ex.Message}",
+                    Isbn = "",
+                    Title = ""
+                });
+            }
+        }
+        
+        return new CsvUploadResultDto
+        {
+            TotalRows = rowNumber,
+            SuccessfulRows = results.Count(r => r.IsSuccess),
+            FailedRows = results.Count(r => !r.IsSuccess),
+            Results = results
+        };
     }
 }
 

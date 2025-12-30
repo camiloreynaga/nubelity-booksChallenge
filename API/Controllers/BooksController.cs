@@ -134,5 +134,47 @@ public class BooksController : ControllerBase
         
         return NoContent(); // 204 No Content
     }
+
+    [HttpPost("masive")]
+    [Authorize] // Requiere autenticación JWT
+    [ProducesResponseType(typeof(CsvUploadResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<CsvUploadResultDto>> UploadBooksCsv(IFormFile file)
+    {
+        // Validar que se proporcionó un archivo
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { error = "No file uploaded or file is empty" });
+        }
+        
+        // Validar extensión (opcional)
+        var allowedExtensions = new[] { ".csv" };
+        var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowedExtensions.Contains(fileExtension))
+        {
+            return BadRequest(new { error = "Invalid file type. Only CSV files are allowed." });
+        }
+        
+        // Validar tamaño máximo (opcional, ej: 10MB)
+        const long maxFileSize = 10 * 1024 * 1024; // 10MB
+        if (file.Length > maxFileSize)
+        {
+            return BadRequest(new { error = $"File size exceeds maximum allowed size of {maxFileSize / 1024 / 1024}MB" });
+        }
+        
+        try
+        {
+            // Procesar CSV
+            using var stream = file.OpenReadStream();
+            var result = await _bookService.CreateBooksFromCsvAsync(stream);
+            
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = $"Error processing CSV file: {ex.Message}" });
+        }
+    }
 }
 

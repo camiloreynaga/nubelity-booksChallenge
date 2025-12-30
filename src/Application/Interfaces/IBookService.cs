@@ -10,5 +10,6 @@ public interface IBookService
     Task<BookResponseDto?> GetByIdAsync(Guid id);
     Task<BookResponseDto> UpdateAsync(Guid id, UpdateBookDto dto);
     Task<bool> DeleteAsync(Guid id);
+    Task<CsvUploadResultDto> CreateBooksFromCsvAsync(Stream csvStream);
 }
 
